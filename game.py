@@ -1,7 +1,7 @@
 # game.py
 from util import print_error
 import random
-import copy
+from collections import deque
 
 class GameMod:
     NORMAL = 0
@@ -62,8 +62,6 @@ class Game:
                 raise ValueError("Number of bottles must be at least equal to the number of colors.")
 
             # Rule 5: Color Cell Counts Compatibility (Dynamic Color Distribution)
-            # Allow variable counts of cells per color, ensuring they sum up to T
-
             # Generate random distribution of cells per color
             self.color_counts = self.generate_color_counts()
 
@@ -72,9 +70,6 @@ class Game:
                 raise ValueError("Sum of cells per color must equal the total number of colored cells.")
 
             # Rule 8: Allowance for Game Rules
-            # Ensure that the initial state allows for legal moves according to the game rules
-            # This will be handled during the puzzle generation
-
             # Generate the initial puzzle state
             self.initial_state = self.generate_puzzle_state()
 
@@ -95,15 +90,11 @@ class Game:
         color_counts = {}
         colors = list(range(1, self.K + 1))
 
-        # Ensure each color has at least one cell
+        # Initially assign zero cells to each color
         for color in colors:
-            min_cells = 1
-            max_cells = min(self.C * self.N - (self.K - len(color_counts) - 1), remaining_cells - (self.K - len(color_counts) - 1))
-            count = random.randint(min_cells, max_cells)
-            color_counts[color] = count
-            remaining_cells -= count
+            color_counts[color] = 0
 
-        # Distribute remaining cells
+        # Distribute the remaining cells
         while remaining_cells > 0:
             color = random.choice(colors)
             if color_counts[color] < self.N * self.C:
@@ -136,10 +127,10 @@ class Game:
 
         # Ensure that empty cells are accounted for
         # Remove cells to create empty spaces (if E > 0)
-        if self.E > 0:
-            total_cells_to_remove = self.E
+        total_cells_to_remove = self.E
+        while total_cells_to_remove > 0:
             for bottle in bottles:
-                while bottle and total_cells_to_remove > 0:
+                if bottle and total_cells_to_remove > 0:
                     bottle.pop()
                     total_cells_to_remove -= 1
                 if total_cells_to_remove == 0:
@@ -149,20 +140,85 @@ class Game:
 
     def is_solvable(self):
         """
-        Determine if the generated puzzle is solvable.
+        Determine if the generated puzzle is solvable using BFS.
         """
-        # For the purposes of this example, we'll assume the puzzle is solvable.
-        # Implement a solving algorithm to verify solvability.
-        # This can be complex and may involve BFS, DFS, or other search algorithms.
-        # For now, we return True as a placeholder.
-        return True
+        from collections import deque
 
-    def solve_puzzle(self):
-        """
-        Solve the puzzle using an appropriate algorithm.
-        """
-        # Implement the solving logic here.
-        pass
+        # Define the goal state check function
+        def is_goal_state(state):
+            for bottle in state:
+                if not bottle:
+                    continue
+                if len(bottle) > self.C:
+                    return False
+                if len(set(bottle)) != 1:
+                    return False
+            return True
+
+        # Serialize the state for hashing
+        def serialize_state(state):
+            return tuple(tuple(bottle) for bottle in state)
+
+        # Initialize BFS
+        initial_state = [list(bottle) for bottle in self.initial_state]
+        visited = set()
+        queue = deque()
+
+        serialized_initial = serialize_state(initial_state)
+        queue.append(initial_state)
+        visited.add(serialized_initial)
+
+        max_steps = 100000  # Limit to prevent infinite loops
+
+        steps = 0
+        while queue and steps < max_steps:
+            current_state = queue.popleft()
+            steps += 1
+
+            # Check if the current state is the goal state
+            if is_goal_state(current_state):
+                return True
+
+            # Generate all valid moves from the current state
+            for i in range(self.N):
+                for j in range(self.N):
+                    if i == j:
+                        continue
+                    source = current_state[i]
+                    dest = current_state[j]
+
+                    if not source:
+                        continue  # Can't pour from empty bottle
+                    if len(dest) >= self.C:
+                        continue  # Can't pour into a full bottle
+
+                    # Get the top color to pour
+                    color_to_pour = source[-1]
+
+                    # Check if we can pour
+                    if not dest or dest[-1] == color_to_pour:
+                        # Find how many cells we can pour
+                        pour_count = 1
+                        while (len(source) - pour_count >= 0 and
+                               source[-pour_count] == color_to_pour and
+                               len(dest) + pour_count <= self.C):
+                            pour_count += 1
+                        pour_count -= 1  # Adjust since we over-counted
+
+                        # Perform the pour
+                        new_state = [list(b) for b in current_state]
+                        moving_cells = [new_state[i].pop() for _ in range(pour_count)]
+                        new_state[j].extend(reversed(moving_cells))
+
+                        # Serialize the new state
+                        serialized_new_state = serialize_state(new_state)
+
+                        if serialized_new_state not in visited:
+                            visited.add(serialized_new_state)
+                            queue.append(new_state)
+
+        # If we exit the loop without returning True, the puzzle is not solvable
+        return False
 
     def print_puzzle(self):
         """
