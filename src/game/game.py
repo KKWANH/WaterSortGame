@@ -1,26 +1,11 @@
 # game.py
-from util import print_error
+import time
 import random
 from collections import deque
 
-class GameMod:
-    NORMAL = 0
-    HIDDEN = 1
-
-    VALID_MOD = {
-        "NORMAL": NORMAL,
-        "HIDDEN": HIDDEN,
-        0: NORMAL,
-        1: HIDDEN
-    }
-
-    @classmethod
-    def isValid(cls, _mod):
-        return _mod in cls.VALID_MOD
-
-    @classmethod
-    def get(cls, _mod):
-        return cls.VALID_MOD.get(_mod)
+from util.util  import print_error, print_debug
+from game.mod   import GameMod
+from game.state import GameState
 
 class Game:
     def __init__(self, _bottles, _capacity, _colors, _empty, _mod):
@@ -38,13 +23,20 @@ class Game:
                 raise ValueError(f"Argument [_mod] is not valid. Should be 0 (Normal) or 1 (Hidden).")
 
             # Value setting
-            self.GAMEMOD = GameMod.get(_mod)
-            self.N = _bottles            # Number of bottles
-            self.C = _capacity           # Cell capacity of each bottle
-            self.K = _colors             # Number of colors
-            self.E = _empty              # Number of empty cells
+            self.GAMEMOD   = GameMod.get(_mod)
+            self.GAMESTATE = GameState.WAITING
+            self.N = _bottles               # Number of bottles
+            self.C = _capacity              # Cell capacity of each bottle
+            self.K = _colors                # Number of colors
+            self.E = _empty                 # Number of empty cells
             self.T = self.N * self.C - self.E  # Total number of colored cells
 
+        except Exception as e:
+            self.GAMESTATE = GameState.FAILURE
+            print_error(f"Error initializing the Game object: {e}")
+        
+    def initialize(self):
+        try:
             # Rule 1: Total Number of Cells Consistency
             if self.T <= 0:
                 raise ValueError("Total number of colored cells must be positive.")
@@ -77,9 +69,12 @@ class Game:
             if not self.is_solvable():
                 raise ValueError("Generated puzzle is not solvable with the given parameters.")
 
-        except Exception as e:
-            print_error(f"Error initializing the game: {e}")
+            self.GAMESTATE = GameState.SUCCESS
 
+        except Exception as e:
+            self.GAMESTATE = GameState.FAILURE
+            print_error(f"Error initializing the game setup: {e}")
+    
     def generate_color_counts(self):
         """
         Generate a random distribution of cells per color,
@@ -100,7 +95,7 @@ class Game:
             if color_counts[color] < self.N * self.C:
                 color_counts[color] += 1
                 remaining_cells -= 1
-
+        
         return color_counts
 
     def generate_puzzle_state(self):
@@ -224,5 +219,25 @@ class Game:
         """
         Print the puzzle state for debugging purposes.
         """
-        for idx, bottle in enumerate(self.initial_state):
-            print(f"Bottle {idx + 1}: {bottle}")
+        for i, bottle in enumerate(self.initial_state):
+            print_debug(f"Bottle {i + 1}: {bottle}", _header_disable=True)
+
+    def start(self):
+        try:
+            self.initialize()
+            while True:
+                if self.GAMESTATE == GameState.FAILURE:
+                    return self.GAMESTATE
+                if self.GAMESTATE == GameState.WAITING:
+                    time.sleep(2)
+                    print_debug("Waits until puzzle is ready.")
+                    continue
+                if not self.is_solvable():
+                    raise ValueError("Puzzle is not solvable.")
+                print_debug("Puzzle is ready for gameplay.")
+                self.print_puzzle()
+                return self.GAMESTATE
+            
+        except Exception as e:
+            print_error(f"Error starting game: {e}")
+
