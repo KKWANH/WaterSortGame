@@ -1,243 +1,182 @@
-# game.py
-import time
 import random
-from collections import deque
 
-from util.util  import print_error, print_debug
-from game.mod   import GameMod
+from util.util import print_error, print_debug, print_info
+from game.mod import GameMod
 from game.state import GameState
 
 class Game:
-    def __init__(self, _bottles, _capacity, _colors, _empty, _mod):
-        try:
-            # Parameter value range check
-            if _bottles < 1:
-                raise ValueError(f"Argument [_bottles] is not valid. Number should be at least 1.")
-            if _capacity < 1:
-                raise ValueError(f"Argument [_capacity] is not valid. Number should be at least 1.")
-            if _colors < 1:
-                raise ValueError(f"Argument [_colors] is not valid. Number should be at least 1.")
-            if _empty < 1:
-                raise ValueError(f"Argument [_empty] is not valid. Number should be at least 1.")
-            if not GameMod.isValid(_mod):
-                raise ValueError(f"Argument [_mod] is not valid. Should be 0 (Normal) or 1 (Hidden).")
+    def __init__(self, _bottles, _capacity, _colors, _mod):
+        # Check if input values are valid
+        if _bottles < 1:
+            print_error("Number of bottles [_bottles] must be at least 1.")
+            return
+        if _capacity < 1:
+            print_error("Capacity [_capacity] must be at least 1.")
+            return
+        if _colors < 1:
+            print_error("Number of colors [_colors] must be at least 1.")
+            return
+        if _mod not in GameMod:
+            print_error("Game mode [_mod] is invalid. Should be 0 (Normal) or 1 (Hidden).")
+            return
 
-            # Value setting
-            self.GAMEMOD   = GameMod.get(_mod)
-            self.GAMESTATE = GameState.WAITING
-            self.N = _bottles               # Number of bottles
-            self.C = _capacity              # Cell capacity of each bottle
-            self.K = _colors                # Number of colors
-            self.E = _empty                 # Number of empty cells
-            self.T = self.N * self.C - self.E  # Total number of colored cells
+        # Value setting
+        self.GAMEMOD = _mod
+        self.GAMESTATE = GameState.WAITING
+        self.num_bottles = _bottles                                 # Number of bottles
+        self.capacity = _capacity                                   # Cell capacity of each bottle
+        self.num_colors = _colors                                   # Number of colors
+        self.total_cells = self.num_bottles * self.capacity         # Total number of cells
+        self.colored_cells = self.num_colors * self.capacity        # Total colored cells
+        self.empty_cells = self.total_cells - self.colored_cells    # Total empty cells
 
-        except Exception as e:
-            self.GAMESTATE = GameState.FAILURE
-            print_error(f"Error initializing the Game object: {e}")
-        
     def initialize(self):
-        try:
-            # Rule 1: Total Number of Cells Consistency
-            if self.T <= 0:
-                raise ValueError("Total number of colored cells must be positive.")
+        # Check total number of cells consistency
+        if self.total_cells <= 0:
+            print_error("Total number of cells must be positive.")
+            return
 
-            # Rule 2: Minimum Empty Cells for Movement
-            if self.E < 1:
-                raise ValueError("There must be at least one empty cell to allow for movement.")
+        # Ensure there is at least one empty cell for movement
+        if self.empty_cells // self.capacity < 1:
+            print_error("There must be at least one empty cell to allow for movement.")
+            return
 
-            # Rule 3: Bottle Capacity Compatibility
-            if self.T % self.C != 0:
-                raise ValueError("The total number of colored cells must be divisible by the bottle capacity.")
+        # Ensure bottle capacity compatibility
+        if self.total_cells % self.capacity != 0:
+            print_error("Total number of cells must be divisible by bottle capacity.")
+            return
 
-            # Rule 4: Number of Bottles vs Number of Colors
-            if self.N < self.K:
-                raise ValueError("Number of bottles must be at least equal to the number of colors.")
+        # Ensure number of bottles vs number of colors compatibility
+        if self.num_bottles <= self.num_colors:
+            print_error("Number of bottles must be greater than number of colors.")
+            return
 
-            # Rule 5: Color Cell Counts Compatibility (Dynamic Color Distribution)
-            # Generate random distribution of cells per color
-            self.color_counts = self.generate_color_counts()
+        # Generate color distribution ensuring each color fits within the bottle capacity
+        self.capacityolors = self.generate_colors()
 
-            # Rule 7: Constraints on Total Cells and Colors
-            if sum(self.color_counts.values()) != self.T:
-                raise ValueError("Sum of cells per color must equal the total number of colored cells.")
+        # Generate the initial puzzle state
+        self.puzzle = self.generate_puzzle_state()
 
-            # Rule 8: Allowance for Game Rules
-            # Generate the initial puzzle state
-            self.initial_state = self.generate_puzzle_state()
-
-            # Verify solvability of the puzzle
-            if not self.is_solvable():
-                raise ValueError("Generated puzzle is not solvable with the given parameters.")
-
-            self.GAMESTATE = GameState.SUCCESS
-
-        except Exception as e:
-            self.GAMESTATE = GameState.FAILURE
-            print_error(f"Error initializing the game setup: {e}")
+        self.GAMESTATE = GameState.SUCCESS
     
-    def generate_color_counts(self):
+    def generate_colors(self):
         """
-        Generate a random distribution of cells per color,
-        ensuring that the total cells equal T and that each color
-        can fit into bottles without exceeding capacity.
+        Generate a pool of colors based on the number of colors (K) and capacity (C).
+        Shuffle the pool to randomize color distribution.
         """
-        remaining_cells = self.T
-        color_counts = {}
-        colors = list(range(1, self.K + 1))
+        color_pool = []
+        for color in range(1, self.num_colors + 1):
+            color_pool.extend([color] * self.capacity)
 
-        # Initially assign zero cells to each color
-        for color in colors:
-            color_counts[color] = 0
-
-        # Distribute the remaining cells
-        while remaining_cells > 0:
-            color = random.choice(colors)
-            if color_counts[color] < self.N * self.C:
-                color_counts[color] += 1
-                remaining_cells -= 1
-        
-        return color_counts
+        random.shuffle(color_pool)
+        return color_pool
 
     def generate_puzzle_state(self):
         """
-        Generate the initial puzzle state based on the color counts.
+        Generate the initial puzzle state by distributing colors into bottles.
         """
-        # Create a list of all colored cells
-        cells = []
-        for color, count in self.color_counts.items():
-            cells.extend([color] * count)
-
-        # Shuffle the cells to create a random starting state
-        random.shuffle(cells)
-
-        # Create empty bottles
-        bottles = [[] for _ in range(self.N)]
-
-        # Fill the bottles with cells
+        bottles = [[] for _ in range(self.num_bottles)]
         cell_index = 0
-        for bottle in bottles:
-            while len(bottle) < self.C and cell_index < len(cells):
-                bottle.append(cells[cell_index])
-                cell_index += 1
 
-        # Ensure that empty cells are accounted for
-        # Remove cells to create empty spaces (if E > 0)
-        total_cells_to_remove = self.E
-        while total_cells_to_remove > 0:
-            for bottle in bottles:
-                if bottle and total_cells_to_remove > 0:
-                    bottle.pop()
-                    total_cells_to_remove -= 1
-                if total_cells_to_remove == 0:
-                    break
+        for bottle in bottles:
+            while len(bottle) < self.capacity and cell_index < len(self.capacityolors):
+                bottle.append(self.capacityolors[cell_index])
+                cell_index += 1
 
         return bottles
 
-    def is_solvable(self):
+    def move(self, source, destination) -> bool:
         """
-        Determine if the generated puzzle is solvable using BFS.
+        Move all the same color from the top of 'source' to 'destination'.
+        Return True if the move is successful, otherwise False.
         """
-        from collections import deque
+        # Check if source and destination bottle indexes are valid
+        if not (0 <= source < self.num_bottles) or not (0 <= destination < self.num_bottles):
+            return False  # Invalid bottle index
 
-        # Define the goal state check function
-        def is_goal_state(state):
-            for bottle in state:
-                if not bottle:
-                    continue
-                if len(bottle) > self.C:
-                    return False
-                if len(set(bottle)) != 1:
-                    return False
-            return True
+        source_bottle = self.puzzle[source]
+        dest_bottle = self.puzzle[destination]
 
-        # Serialize the state for hashing
-        def serialize_state(state):
-            return tuple(tuple(bottle) for bottle in state)
+        # Cannot move from an empty source bottle
+        if not source_bottle:
+            return False
 
-        # Initialize BFS
-        initial_state = [list(bottle) for bottle in self.initial_state]
-        visited = set()
-        queue = deque()
+        # Top color of the source bottle
+        top_color = source_bottle[-1]
 
-        serialized_initial = serialize_state(initial_state)
-        queue.append(initial_state)
-        visited.add(serialized_initial)
+        # Destination bottle must be either empty or have the same top color
+        if dest_bottle and dest_bottle[-1] != top_color:
+            return False
 
-        max_steps = 100000  # Limit to prevent infinite loops
+        # Count how many top-color cells can be moved
+        move_count = 0
+        while move_count < len(source_bottle) and source_bottle[-(move_count + 1)] == top_color:
+            move_count += 1
 
-        steps = 0
-        while queue and steps < max_steps:
-            current_state = queue.popleft()
-            steps += 1
+        # Check available space in the destination bottle
+        available_space = self.capacity - len(dest_bottle)
 
-            # Check if the current state is the goal state
-            if is_goal_state(current_state):
-                return True
+        if move_count > available_space:
+            return False  # Not enough space in the destination bottle
 
-            # Generate all valid moves from the current state
-            for i in range(self.N):
-                for j in range(self.N):
-                    if i == j:
-                        continue
-                    source = current_state[i]
-                    dest = current_state[j]
+        # Perform the move
+        dest_bottle.extend(source_bottle[-move_count:])
+        del source_bottle[-move_count:]
 
-                    if not source:
-                        continue  # Can't pour from empty bottle
-                    if len(dest) >= self.C:
-                        continue  # Can't pour into a full bottle
+        return True
 
-                    # Get the top color to pour
-                    color_to_pour = source[-1]
-
-                    # Check if we can pour
-                    if not dest or dest[-1] == color_to_pour:
-                        # Find how many cells we can pour
-                        pour_count = 1
-                        while (len(source) - pour_count >= 0 and
-                               source[-pour_count] == color_to_pour and
-                               len(dest) + pour_count <= self.C):
-                            pour_count += 1
-                        pour_count -= 1  # Adjust since we over-counted
-
-                        # Perform the pour
-                        new_state = [list(b) for b in current_state]
-                        moving_cells = [new_state[i].pop() for _ in range(pour_count)]
-                        new_state[j].extend(reversed(moving_cells))
-
-                        # Serialize the new state
-                        serialized_new_state = serialize_state(new_state)
-
-                        if serialized_new_state not in visited:
-                            visited.add(serialized_new_state)
-                            queue.append(new_state)
-
-        # If we exit the loop without returning True, the puzzle is not solvable
-        return False
+    def is_solved(self):
+        """
+        Check if the game is solved: all bottles should either be empty or filled with one color.
+        """
+        for bottle in self.puzzle:
+            if not bottle:
+                continue  # Ignore empty bottles
+            if len(bottle) != self.capacity or len(set(bottle)) != 1:
+                return False  # Bottle must be full and contain only one color
+        return True
 
     def print_puzzle(self):
-        """
-        Print the puzzle state for debugging purposes.
-        """
-        for i, bottle in enumerate(self.initial_state):
-            print_debug(f"Bottle {i + 1}: {bottle}", _header_disable=True)
+        max_height = max(len(bottle) for bottle in self.puzzle)
+        for level in range(max_height, 0, -1):
+            line = ''
+            for bottle in self.puzzle:
+                if len(bottle) >= level:
+                    line += f'| {bottle[level - 1]} | '
+                else:
+                    line += '|   | '
+            print(line)
+        print('-' * (self.num_bottles * 6))
+
+    def get_valid_int_input(self, prompt):
+        while True:
+            user_input = input(prompt)
+            if user_input.isdigit():
+                return int(user_input) - 1
+            else:
+                print_error("Invalid input. Please enter a number.")
 
     def start(self):
         try:
+            print_info("Initializing.")
             self.initialize()
-            while True:
-                if self.GAMESTATE == GameState.FAILURE:
-                    return self.GAMESTATE
-                if self.GAMESTATE == GameState.WAITING:
-                    time.sleep(2)
-                    print_debug("Waits until puzzle is ready.")
-                    continue
-                if not self.is_solvable():
-                    raise ValueError("Puzzle is not solvable.")
-                print_debug("Puzzle is ready for gameplay.")
-                self.print_puzzle()
+            if self.GAMESTATE == GameState.FAILURE:
                 return self.GAMESTATE
+
+            print_info("Game Start.")
+            while True:
+                self.print_puzzle()
+                from_bottle = self.get_valid_int_input("From which bottle? ")
+                to_bottle = self.get_valid_int_input("To which bottle? ")
+
+                if self.move(from_bottle, to_bottle):
+                    print_info("Move successful.")
+                    if self.is_solved():
+                        print_info("Congratulations! You've solved the puzzle!")
+                        self.print_puzzle()
+                        return True
+                else:
+                    print_info("Invalid move. Try again.")
             
         except Exception as e:
             print_error(f"Error starting game: {e}")
-

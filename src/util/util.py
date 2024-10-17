@@ -22,5 +22,8 @@ def print_command(_header, _body, _header_color=None, _header_disable=False, _en
 def print_error(_body, _end="\n", _header_disable=False):
     print_command("FAILURE", _body, _header_color=Colors.RED, _header_disable=_header_disable, _end=_end)
 
+def print_info(_body, _end="\n", _header_disable=False):
+    print_command("INFORMT", _body, _header_color=Colors.CYAN, _header_disable=_header_disable, _end=_end)
+
 def print_debug(_body, _end="\n", _header_disable=False):
     print_command("_DEBUG_", _body, _header_color=Colors.PURPLE, _header_disable=_header_disable, _end=_end)
