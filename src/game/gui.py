@@ -14,24 +14,32 @@ class GameGUI:
 
         # Pygame initialization
         pygame.init()
-        self.screen_width = 800
-        self.screen_height = 600
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
         pygame.display.set_caption('Water Sort Puzzle')
         self.clock = pygame.time.Clock()
         self.running = True
+
+        # Screen size
+        self.screen_width = 800
+        self.screen_height = 600
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
 
         # Colors
         self.assign_random_colors()  # Assign colors once at game start
         self.selected_bottle = None  # To track the selected bottle
 
         # Fonts
-        self.font_small = pygame.font.SysFont('Arial', 24)
-        self.font_large = pygame.font.SysFont('Arial', 48)
+        self.font_small = pygame.font.SysFont('Helvetica', 16)  # macOS style font
+        self.font_large = pygame.font.SysFont('Helvetica', 32)
+
+        # Color theme
+        self.background_color = (30, 30, 30)  # Dark background
+        self.bottle_outline_color = (200, 200, 200)
+        self.bottle_fill_color = (50, 50, 50)
+        self.selected_bottle_color = (255, 215, 0)  # Gold highlight
 
     def assign_random_colors(self):
         """
-        Assign a random RGB color to each color number.
+        Assign a unique RGB color to each color number.
         """
         self.color_map = {}
         hues = [int(i * 360 / self.game.num_colors) for i in range(self.game.num_colors)]
@@ -39,73 +47,79 @@ class GameGUI:
         for i, color_num in enumerate(range(1, self.game.num_colors + 1)):
             hue = hues[i]
             color = pygame.Color(0)
-            color.hsva = (hue, 100, 100, 100)
+            color.hsva = (hue, 80, 90, 100)
             self.color_map[color_num] = color
 
     def draw_puzzle(self):
         """
-        현재 퍼즐 상태를 Pygame으로 그립니다.
+        Draw the current puzzle state using Pygame.
         """
-        self.screen.fill((30, 30, 30))  # 더 어두운 배경
+        self.screen.fill(self.background_color)  # Dark background
 
-        bottle_width = 60
-        bottle_height = self.game.capacity * 30 + 20
-        spacing = 20
-        start_x = (self.screen_width - (self.game.num_bottles * (bottle_width + spacing))) // 2
-        start_y = (self.screen_height - bottle_height) // 2 + 50  # 헤더 공간 확보
+        # Responsive bottle size
+        bottle_spacing = 20
+        max_bottle_width = 80
+        max_bottle_height = 300
+        num_bottles = self.game.num_bottles
+        capacity = self.game.capacity
+
+        # Calculate bottle size
+        bottle_width = min(max_bottle_width, (self.screen_width - (num_bottles + 1) * bottle_spacing) / num_bottles)
+        bottle_height = min(max_bottle_height, (self.screen_height - 200))  # Reserve space for header and footer
+        liquid_height = (bottle_height - 20) / capacity
+
+        start_x = (self.screen_width - (num_bottles * (bottle_width + bottle_spacing) - bottle_spacing)) / 2
+        start_y = (self.screen_height - bottle_height) / 2 + 30  # Adjust for header
 
         for index, bottle in enumerate(self.game.puzzle):
-            x = start_x + index * (bottle_width + spacing)
+            x = start_x + index * (bottle_width + bottle_spacing)
             y = start_y
 
-            # 병 윤곽 그리기
-            pygame.draw.rect(self.screen, (200, 200, 200), (x, y, bottle_width, bottle_height), 2)
-            pygame.draw.rect(self.screen, (50, 50, 50), (x, y, bottle_width, bottle_height))
+            # Draw bottle outline
+            pygame.draw.rect(self.screen, self.bottle_fill_color, (x, y, bottle_width, bottle_height), border_radius=10)
+            pygame.draw.rect(self.screen, self.bottle_outline_color, (x, y, bottle_width, bottle_height), 2, border_radius=10)
 
-            # 선택된 병 강조 표시
+            # Highlight selected bottle
             if self.selected_bottle == index:
-                pygame.draw.rect(self.screen, (255, 215, 0), (x - 4, y - 4, bottle_width + 8, bottle_height + 8), 3)
+                pygame.draw.rect(self.screen, self.selected_bottle_color, (x - 3, y - 3, bottle_width + 6, bottle_height + 6), 3, border_radius=13)
 
-            # 액체를 아래에서 위로 그리기
-            liquid_height = (bottle_height - 20) / self.game.capacity
+            # Draw liquids from bottom to top
             num_liquids = len(bottle)
             for i in range(num_liquids):
-                color_num = bottle[i]  # 병의 첫 번째 요소부터 접근 (맨 아래 요소)
+                color_num = bottle[i]  # Access from first element
                 color = self.color_map.get(color_num, (255, 255, 255))
                 rect = pygame.Rect(
-                    x + 2,
+                    x + 5,
                     y + bottle_height - 10 - (i + 1) * liquid_height,
-                    bottle_width - 4,
+                    bottle_width - 10,
                     liquid_height
                 )
-                pygame.draw.rect(self.screen, color, rect)
+                pygame.draw.rect(self.screen, color, rect, border_radius=3)
 
-                # 층 사이 경계선 그리기
-                pygame.draw.rect(self.screen, (0, 0, 0), rect, 1)
-
-        # 헤더 그리기
+        # Draw header
         header_text = self.font_large.render("Water Sort Puzzle", True, (255, 255, 255))
-        header_rect = header_text.get_rect(center=(self.screen_width // 2, 40))
+        header_rect = header_text.get_rect(center=(self.screen_width // 2, 20))
         self.screen.blit(header_text, header_rect)
 
         pygame.display.flip()
-
-
-
 
     def get_bottle_at_pos(self, pos):
         """
         Determine which bottle was clicked based on the mouse position.
         """
-        bottle_width = 60
-        bottle_height = self.game.capacity * 30 + 20
-        spacing = 20
-        start_x = (self.screen_width - (self.game.num_bottles * (bottle_width + spacing))) // 2
-        start_y = (self.screen_height - bottle_height) // 2 + 50  # Consider header space
+        bottle_spacing = 20
+        num_bottles = self.game.num_bottles
+        capacity = self.game.capacity
+
+        # Calculate bottle size
+        bottle_width = min(80, (self.screen_width - (num_bottles + 1) * bottle_spacing) / num_bottles)
+        bottle_height = min(300, (self.screen_height - 200))
+        start_x = (self.screen_width - (num_bottles * (bottle_width + bottle_spacing) - bottle_spacing)) / 2
+        start_y = (self.screen_height - bottle_height) / 2 + 30
 
         x, y = pos
-        for index in range(self.game.num_bottles):
-            bottle_x = start_x + index * (bottle_width + spacing)
+        for index in range(num_bottles):
+            bottle_x = start_x + index * (bottle_width + bottle_spacing)
             bottle_rect = pygame.Rect(bottle_x, start_y, bottle_width, bottle_height)
             if bottle_rect.collidepoint(x, y):
                 return index
@@ -117,6 +131,9 @@ class GameGUI:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.handle_quit()
+                elif event.type == pygame.VIDEORESIZE:
+                    self.screen_width, self.screen_height = event.size
+                    self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     self.handle_click(event.pos)
 
@@ -136,20 +153,20 @@ class GameGUI:
             else:
                 if self.selected_bottle != bottle_index:
                     if self.game.move(self.selected_bottle, bottle_index):
-                        print_info(f"Moved from bottle {self.selected_bottle + 1} to {bottle_index + 1}")
+                        print_info(f"Moved from bottle {self.selected_bottle + 1} to bottle {bottle_index + 1}.")
                     else:
                         print_info("Invalid move.")
                 self.selected_bottle = None
 
     def display_win_message(self):
-        font = pygame.font.SysFont('Arial', 72)
-        text = font.render("You Win!", True, (255, 215, 0))
+        font = pygame.font.SysFont('Helvetica', 48)
+        text = font.render("You Win!", True, (255, 255, 255))
         rect = text.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
         self.screen.blit(text, rect)
         pygame.display.flip()
 
     def handle_quit(self):
-        # Use GUI to ask if the player wants to export the game
+        # Ask if the player wants to export the game using GUI
         export = self.show_export_dialog()
         if export:
             filename = self.show_filename_input()
@@ -162,10 +179,9 @@ class GameGUI:
     def show_export_dialog(self):
         """
         Display a GUI dialog asking if the player wants to export the game.
-        Returns True if the player chooses to export, False otherwise.
         """
         dialog_width = 400
-        dialog_height = 200
+        dialog_height = 150
         dialog_rect = pygame.Rect(
             (self.screen_width - dialog_width) // 2,
             (self.screen_height - dialog_height) // 2,
@@ -173,8 +189,8 @@ class GameGUI:
             dialog_height
         )
 
-        yes_button = pygame.Rect(dialog_rect.left + 50, dialog_rect.bottom - 80, 120, 50)
-        no_button = pygame.Rect(dialog_rect.right - 170, dialog_rect.bottom - 80, 120, 50)
+        yes_button = pygame.Rect(dialog_rect.left + 40, dialog_rect.bottom - 60, 100, 40)
+        no_button = pygame.Rect(dialog_rect.right - 140, dialog_rect.bottom - 60, 100, 40)
 
         running_dialog = True
         while running_dialog:
@@ -191,28 +207,18 @@ class GameGUI:
                     elif no_button.collidepoint(event.pos):
                         return False
 
-            # Draw dialog background with rounded corners
+            # Draw dialog background
             self.draw_rounded_rect(self.screen, (50, 50, 50), dialog_rect, 10)
-            pygame.draw.rect(self.screen, (255, 255, 255), dialog_rect, 2, border_radius=10)
 
             # Render text
-            font = pygame.font.SysFont('Arial', 28)
-            text_surface = font.render("Do you want to export your game?", True, (255, 255, 255))
-            text_rect = text_surface.get_rect(center=(self.screen_width // 2, dialog_rect.top + 60))
+            font = pygame.font.SysFont('Helvetica', 18)
+            text_surface = font.render("Do you want to export the game?", True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(self.screen_width // 2, dialog_rect.top + 50))
             self.screen.blit(text_surface, text_rect)
 
-            # Draw buttons with rounded corners
-            self.draw_rounded_rect(self.screen, (70, 130, 180), yes_button, 5)
-            pygame.draw.rect(self.screen, (255, 255, 255), yes_button, 2, border_radius=5)
-            yes_text = font.render("Yes", True, (255, 255, 255))
-            yes_text_rect = yes_text.get_rect(center=yes_button.center)
-            self.screen.blit(yes_text, yes_text_rect)
-
-            self.draw_rounded_rect(self.screen, (200, 70, 70), no_button, 5)
-            pygame.draw.rect(self.screen, (255, 255, 255), no_button, 2, border_radius=5)
-            no_text = font.render("No", True, (255, 255, 255))
-            no_text_rect = no_text.get_rect(center=no_button.center)
-            self.screen.blit(no_text, no_text_rect)
+            # Draw buttons
+            self.draw_button(yes_button, "Yes")
+            self.draw_button(no_button, "No")
 
             pygame.display.flip()
 
@@ -220,11 +226,10 @@ class GameGUI:
 
     def show_filename_input(self):
         """
-        Display a GUI input box for the player to enter the filename.
-        Returns the filename as a string.
+        Display a GUI input box to get the filename from the player.
         """
         dialog_width = 500
-        dialog_height = 200
+        dialog_height = 150
         dialog_rect = pygame.Rect(
             (self.screen_width - dialog_width) // 2,
             (self.screen_height - dialog_height) // 2,
@@ -236,7 +241,7 @@ class GameGUI:
         input_text = ''
         active = True
 
-        submit_button = pygame.Rect(dialog_rect.centerx - 60, dialog_rect.bottom - 60, 120, 50)
+        submit_button = pygame.Rect(dialog_rect.centerx - 50, dialog_rect.bottom - 50, 100, 40)
 
         running_dialog = True
         while running_dialog:
@@ -265,36 +270,45 @@ class GameGUI:
                     else:
                         input_text += event.unicode
 
-            # Draw dialog background with rounded corners
+            # Draw dialog background
             self.draw_rounded_rect(self.screen, (50, 50, 50), dialog_rect, 10)
-            pygame.draw.rect(self.screen, (255, 255, 255), dialog_rect, 2, border_radius=10)
 
-            # Render prompt text
-            font = pygame.font.SysFont('Arial', 24)
+            # Prompt text rendering
+            font = pygame.font.SysFont('Helvetica', 18)
             prompt_surface = font.render("Enter filename to export (e.g., game.csv):", True, (255, 255, 255))
             prompt_rect = prompt_surface.get_rect(midtop=(self.screen_width // 2, dialog_rect.top + 20))
             self.screen.blit(prompt_surface, prompt_rect)
 
-            # Draw input box with rounded corners
+            # Draw input box
             self.draw_rounded_rect(self.screen, (255, 255, 255), input_box, 5)
-            pygame.draw.rect(self.screen, (0, 0, 0), input_box, 2, border_radius=5)
+            if active:
+                pygame.draw.rect(self.screen, (255, 215, 0), input_box, 2, border_radius=5)
+            else:
+                pygame.draw.rect(self.screen, (200, 200, 200), input_box, 2, border_radius=5)
             input_surface = font.render(input_text, True, (0, 0, 0))
-            self.screen.blit(input_surface, (input_box.x + 5, input_box.y + 5))
+            self.screen.blit(input_surface, (input_box.x + 5, input_box.y + 7))
 
             # Draw submit button
-            self.draw_rounded_rect(self.screen, (70, 130, 180), submit_button, 5)
-            pygame.draw.rect(self.screen, (255, 255, 255), submit_button, 2, border_radius=5)
-            submit_text = font.render("Submit", True, (255, 255, 255))
-            submit_text_rect = submit_text.get_rect(center=submit_button.center)
-            self.screen.blit(submit_text, submit_text_rect)
+            self.draw_button(submit_button, "Save")
 
             pygame.display.flip()
 
         return None
+
+    def draw_button(self, rect, text):
+        """
+        Draw a button with given rectangle and text.
+        """
+        # Draw button background
+        self.draw_rounded_rect(self.screen, (70, 130, 180), rect, 5)
+        # Draw button text
+        font = pygame.font.SysFont('Helvetica', 18)
+        text_surface = font.render(text, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=rect.center)
+        self.screen.blit(text_surface, text_rect)
 
     def draw_rounded_rect(self, surface, color, rect, radius):
         """
         Draw a rectangle with rounded corners.
         """
         pygame.draw.rect(surface, color, rect, border_radius=radius)
-
