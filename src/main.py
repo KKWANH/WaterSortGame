@@ -1,7 +1,16 @@
-from game.game import Game
-from game.mod  import GameMod
+from game.game  import Game
+from game.state import GameState
+from game.gui   import GameGUI
+from util.util  import print_error
 
 if __name__ == "__main__":
-    # Parameters: bottles, capacity, colors, game_mode
-    game = Game(6, 4, 4, GameMod.NORMAL)
-    game.start()
+    num_bottles = 6
+    capacity = 4
+    num_colors = 4
+
+    game = Game(num_bottles, capacity, num_colors)
+    if game.GAMESTATE == GameState.SUCCESS:
+        gui = GameGUI(game)
+        gui.start()
+    else:
+        print_error("Failed to initialize the game.")

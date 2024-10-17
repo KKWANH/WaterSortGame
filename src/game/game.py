@@ -1,67 +1,84 @@
+
 import random
+import csv
+import copy
 
 from util.util import print_error, print_debug, print_info
-from game.mod import GameMod
 from game.state import GameState
 
 class Game:
-    def __init__(self, _bottles, _capacity, _colors, _mod):
+    def __init__(self, num_bottles, capacity, num_colors):
         # Check if input values are valid
-        if _bottles < 1:
-            print_error("Number of bottles [_bottles] must be at least 1.")
+        if num_bottles < 1:
+            print_error("Number of bottles must be at least 1.")
+            self.GAMESTATE = GameState.FAILURE
             return
-        if _capacity < 1:
-            print_error("Capacity [_capacity] must be at least 1.")
+        if capacity < 1:
+            print_error("Capacity must be at least 1.")
+            self.GAMESTATE = GameState.FAILURE
             return
-        if _colors < 1:
-            print_error("Number of colors [_colors] must be at least 1.")
-            return
-        if _mod not in GameMod:
-            print_error("Game mode [_mod] is invalid. Should be 0 (Normal) or 1 (Hidden).")
+        if num_colors < 1:
+            print_error("Number of colors must be at least 1.")
+            self.GAMESTATE = GameState.FAILURE
             return
 
         # Value setting
-        self.GAMEMOD = _mod
         self.GAMESTATE = GameState.WAITING
-        self.num_bottles = _bottles                                 # Number of bottles
-        self.capacity = _capacity                                   # Cell capacity of each bottle
-        self.num_colors = _colors                                   # Number of colors
-        self.total_cells = self.num_bottles * self.capacity         # Total number of cells
-        self.colored_cells = self.num_colors * self.capacity        # Total colored cells
-        self.empty_cells = self.total_cells - self.colored_cells    # Total empty cells
+        self.num_bottles = num_bottles                               # Number of bottles
+        self.capacity = capacity                                     # Cell capacity of each bottle
+        self.num_colors = num_colors                                 # Number of colors
+        self.total_cells = self.num_bottles * self.capacity          # Total number of cells
+        self.colored_cells = self.num_colors * self.capacity         # Total colored cells
+        self.empty_cells = self.total_cells - self.colored_cells     # Total empty cells
+
+        self.moves_history = []    # To keep track of moves for export/import
+        self.initial_puzzle = []   # To store the initial state of the puzzle
+        self.is_game_solved = False  # To mark whether the game was solved
+
+        self.colors = []           # Color pool
+        self.puzzle = []           # Current puzzle state
+
+        self.initialize()
 
     def initialize(self):
         # Check total number of cells consistency
         if self.total_cells <= 0:
             print_error("Total number of cells must be positive.")
+            self.GAMESTATE = GameState.FAILURE
             return
 
         # Ensure there is at least one empty cell for movement
         if self.empty_cells // self.capacity < 1:
-            print_error("There must be at least one empty cell to allow for movement.")
+            print_error("There must be at least one empty bottle to allow for movement.")
+            self.GAMESTATE = GameState.FAILURE
             return
 
         # Ensure bottle capacity compatibility
         if self.total_cells % self.capacity != 0:
             print_error("Total number of cells must be divisible by bottle capacity.")
+            self.GAMESTATE = GameState.FAILURE
             return
 
         # Ensure number of bottles vs number of colors compatibility
         if self.num_bottles <= self.num_colors:
             print_error("Number of bottles must be greater than number of colors.")
+            self.GAMESTATE = GameState.FAILURE
             return
 
         # Generate color distribution ensuring each color fits within the bottle capacity
-        self.capacityolors = self.generate_colors()
+        self.colors = self.generate_colors()
 
         # Generate the initial puzzle state
         self.puzzle = self.generate_puzzle_state()
 
+        # Store the initial state of the puzzle
+        self.initial_puzzle = copy.deepcopy(self.puzzle)
+
         self.GAMESTATE = GameState.SUCCESS
-    
+
     def generate_colors(self):
         """
-        Generate a pool of colors based on the number of colors (K) and capacity (C).
+        Generate a pool of colors based on the number of colors and capacity.
         Shuffle the pool to randomize color distribution.
         """
         color_pool = []
@@ -79,8 +96,8 @@ class Game:
         cell_index = 0
 
         for bottle in bottles:
-            while len(bottle) < self.capacity and cell_index < len(self.capacityolors):
-                bottle.append(self.capacityolors[cell_index])
+            while len(bottle) < self.capacity and cell_index < len(self.colors):
+                bottle.append(self.colors[cell_index])
                 cell_index += 1
 
         return bottles
@@ -123,6 +140,9 @@ class Game:
         dest_bottle.extend(source_bottle[-move_count:])
         del source_bottle[-move_count:]
 
+        # Record the move
+        self.moves_history.append((source, destination))
+
         return True
 
     def is_solved(self):
@@ -136,47 +156,70 @@ class Game:
                 return False  # Bottle must be full and contain only one color
         return True
 
-    def print_puzzle(self):
-        max_height = max(len(bottle) for bottle in self.puzzle)
-        for level in range(max_height, 0, -1):
-            line = ''
-            for bottle in self.puzzle:
-                if len(bottle) >= level:
-                    line += f'| {bottle[level - 1]} | '
-                else:
-                    line += '|   | '
-            print(line)
-        print('-' * (self.num_bottles * 6))
-
-    def get_valid_int_input(self, prompt):
-        while True:
-            user_input = input(prompt)
-            if user_input.isdigit():
-                return int(user_input) - 1
-            else:
-                print_error("Invalid input. Please enter a number.")
-
-    def start(self):
+    def export_game(self, filename):
+        """
+        Export the game data to a CSV file, including initial state, moves, and final status.
+        """
         try:
-            print_info("Initializing.")
-            self.initialize()
-            if self.GAMESTATE == GameState.FAILURE:
-                return self.GAMESTATE
+            with open(filename, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                # Write initial puzzle state
+                writer.writerow(['Initial Puzzle State'])
+                for bottle in self.initial_puzzle:
+                    writer.writerow(bottle)
+                writer.writerow([])  # Empty line
 
-            print_info("Game Start.")
-            while True:
-                self.print_puzzle()
-                from_bottle = self.get_valid_int_input("From which bottle? ")
-                to_bottle = self.get_valid_int_input("To which bottle? ")
+                # Write moves history
+                writer.writerow(['Moves History'])
+                writer.writerow(['source', 'destination'])
+                for move in self.moves_history:
+                    writer.writerow([move[0], move[1]])
+                writer.writerow([])  # Empty line
 
-                if self.move(from_bottle, to_bottle):
-                    print_info("Move successful.")
-                    if self.is_solved():
-                        print_info("Congratulations! You've solved the puzzle!")
-                        self.print_puzzle()
-                        return True
-                else:
-                    print_info("Invalid move. Try again.")
-            
+                # Write final status
+                writer.writerow(['Game Solved', self.is_game_solved])
+            print_info(f"Game exported successfully to {filename}.")
         except Exception as e:
-            print_error(f"Error starting game: {e}")
+            print_error(f"Failed to export game: {e}")
+
+    def import_game(self, filename):
+        """
+        Import game data from a CSV file and replay the game.
+        """
+        try:
+            with open(filename, 'r') as csvfile:
+                reader = csv.reader(csvfile)
+                content = list(reader)
+
+                # Extract initial puzzle state
+                initial_state_index = content.index(['Initial Puzzle State']) + 1
+                moves_history_index = content.index(['Moves History'])
+                initial_puzzle_data = content[initial_state_index:moves_history_index - 1]
+
+                # Reconstruct the initial puzzle state
+                self.initial_puzzle = [list(map(int, row)) for row in initial_puzzle_data]
+                self.puzzle = copy.deepcopy(self.initial_puzzle)
+
+                # Reset moves history
+                self.moves_history = []
+
+                # Extract moves history
+                moves_data = content[moves_history_index + 2:]  # Skip 'Moves History' and headers
+                for row in moves_data:
+                    if not row:
+                        continue
+                    if row[0] == 'Game Solved':
+                        # Read final status
+                        self.is_game_solved = row[1] == 'True'
+                        break
+                    source = int(row[0])
+                    destination = int(row[1])
+                    if not self.move(source, destination):
+                        print_error(f"Invalid move from {source + 1} to {destination + 1}.")
+                        break
+
+                print_info("Game replayed successfully.")
+                return True
+        except Exception as e:
+            print_error(f"Failed to import game: {e}")
+            return False
