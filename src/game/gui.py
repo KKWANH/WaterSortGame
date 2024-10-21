@@ -1,5 +1,3 @@
-# game_gui.py
-
 import pygame
 import random
 import sys
@@ -63,17 +61,22 @@ class GameGUI:
         num_bottles = self.game.num_bottles
         capacity = self.game.capacity
 
-        # Calculate bottle size
-        bottle_width = min(max_bottle_width, (self.screen_width - (num_bottles + 1) * bottle_spacing) / num_bottles)
-        bottle_height = min(max_bottle_height, (self.screen_height - 200))  # Reserve space for header and footer
+        # Determine number of rows for bottles (responsive layout)
+        bottles_per_row = min(num_bottles, self.screen_width // (max_bottle_width + bottle_spacing))
+        num_rows = (num_bottles + bottles_per_row - 1) // bottles_per_row
+
+        bottle_width = min(max_bottle_width, (self.screen_width - (bottles_per_row + 1) * bottle_spacing) / bottles_per_row)
+        bottle_height = min(max_bottle_height, (self.screen_height - 200) / num_rows)  # Reserve space for header and footer
         liquid_height = (bottle_height - 20) / capacity
 
-        start_x = (self.screen_width - (num_bottles * (bottle_width + bottle_spacing) - bottle_spacing)) / 2
-        start_y = (self.screen_height - bottle_height) / 2 + 30  # Adjust for header
+        start_x = (self.screen_width - (bottles_per_row * (bottle_width + bottle_spacing) - bottle_spacing)) / 2
+        start_y = (self.screen_height - (num_rows * (bottle_height + bottle_spacing) - bottle_spacing)) / 2 + 30
 
         for index, bottle in enumerate(self.game.puzzle):
-            x = start_x + index * (bottle_width + bottle_spacing)
-            y = start_y
+            row = index // bottles_per_row
+            col = index % bottles_per_row
+            x = start_x + col * (bottle_width + bottle_spacing)
+            y = start_y + row * (bottle_height + bottle_spacing)
 
             # Draw bottle outline
             pygame.draw.rect(self.screen, self.bottle_fill_color, (x, y, bottle_width, bottle_height), border_radius=10)
@@ -83,23 +86,18 @@ class GameGUI:
             if self.selected_bottle == index:
                 pygame.draw.rect(self.screen, self.selected_bottle_color, (x - 3, y - 3, bottle_width + 6, bottle_height + 6), 3, border_radius=13)
 
-            # Draw liquids from bottom to top
+            # Draw liquids from bottom to top with spacing between layers
             num_liquids = len(bottle)
             for i in range(num_liquids):
                 color_num = bottle[i]  # Access from first element
                 color = self.color_map.get(color_num, (255, 255, 255))
                 rect = pygame.Rect(
                     x + 5,
-                    y + bottle_height - 10 - (i + 1) * liquid_height,
+                    y + bottle_height - 10 - (i + 1) * liquid_height + 5,  # Add spacing between layers
                     bottle_width - 10,
-                    liquid_height
+                    liquid_height - 5  # Reduce height slightly for spacing
                 )
                 pygame.draw.rect(self.screen, color, rect, border_radius=3)
-
-        # Draw header
-        header_text = self.font_large.render("Water Sort Puzzle", True, (255, 255, 255))
-        header_rect = header_text.get_rect(center=(self.screen_width // 2, 20))
-        self.screen.blit(header_text, header_rect)
 
         pygame.display.flip()
 
@@ -108,19 +106,21 @@ class GameGUI:
         Determine which bottle was clicked based on the mouse position.
         """
         bottle_spacing = 20
-        num_bottles = self.game.num_bottles
-        capacity = self.game.capacity
+        bottles_per_row = min(self.game.num_bottles, self.screen_width // (80 + bottle_spacing))
+        num_rows = (self.game.num_bottles + bottles_per_row - 1) // bottles_per_row
 
-        # Calculate bottle size
-        bottle_width = min(80, (self.screen_width - (num_bottles + 1) * bottle_spacing) / num_bottles)
-        bottle_height = min(300, (self.screen_height - 200))
-        start_x = (self.screen_width - (num_bottles * (bottle_width + bottle_spacing) - bottle_spacing)) / 2
-        start_y = (self.screen_height - bottle_height) / 2 + 30
+        bottle_width = min(80, (self.screen_width - (bottles_per_row + 1) * bottle_spacing) / bottles_per_row)
+        bottle_height = min(300, (self.screen_height - 200) / num_rows)
+        start_x = (self.screen_width - (bottles_per_row * (bottle_width + bottle_spacing) - bottle_spacing)) / 2
+        start_y = (self.screen_height - (num_rows * (bottle_height + bottle_spacing) - bottle_spacing)) / 2 + 30
 
         x, y = pos
-        for index in range(num_bottles):
-            bottle_x = start_x + index * (bottle_width + bottle_spacing)
-            bottle_rect = pygame.Rect(bottle_x, start_y, bottle_width, bottle_height)
+        for index in range(self.game.num_bottles):
+            row = index // bottles_per_row
+            col = index % bottles_per_row
+            bottle_x = start_x + col * (bottle_width + bottle_spacing)
+            bottle_y = start_y + row * (bottle_height + bottle_spacing)
+            bottle_rect = pygame.Rect(bottle_x, bottle_y, bottle_width, bottle_height)
             if bottle_rect.collidepoint(x, y):
                 return index
         return None
